@@ -1,0 +1,233 @@
+#include <bits/stdc++.h>
+using namespace std;
+
+/* ===========================
+   1) KMP: compute LPS and search
+   =========================== */
+vector<int> computeLPS(const string &pat) {
+    int n = pat.size();
+    vector<int> lps(n);
+    lps[0] = 0;
+    for (int i = 1, len = 0; i < n; ) {
+        if (pat[i] == pat[len]) {
+            len++;
+            lps[i] = len;
+            i++;
+        } else {
+            if (len != 0) len = lps[len-1];
+            else { lps[i] = 0; i++; }
+        }
+    }
+    return lps;
+}
+
+vector<int> kmpSearch(const string &text, const string &pat) {
+    vector<int> res;
+    if (pat.empty()) return res;
+    vector<int> lps = computeLPS(pat);
+    int i = 0, j = 0; // i -> text, j -> pat
+    while (i < (int)text.size()) {
+        if (text[i] == pat[j]) { i++; j++; }
+        if (j == (int)pat.size()) {
+            res.push_back(i - j); // match at i-j
+            j = lps[j-1];
+        } else if (i < (int)text.size() && text[i] != pat[j]) {
+            if (j != 0) j = lps[j-1];
+            else i++;
+        }
+    }
+    return res;
+}
+
+/* ===========================
+   2) Rabin-Karp (rolling hash)
+   =========================== */
+vector<int> rabinKarp(const string &text, const string &pat) {
+    vector<int> res;
+    int n = text.size(), m = pat.size();
+    if (m == 0 || m > n) return res;
+
+    const long long base = 256;
+    const long long mod = 1000000007LL; // large prime
+    long long patHash = 0, txtHash = 0, powBase = 1;
+
+    // precompute base^(m-1) % mod
+    for (int i = 0; i < m-1; ++i) powBase = (powBase * base) % mod;
+
+    // initial hashes
+    for (int i = 0; i < m; ++i) {
+        patHash = (patHash * base + (unsigned char)pat[i]) % mod;
+        txtHash = (txtHash * base + (unsigned char)text[i]) % mod;
+    }
+
+    for (int i = 0; i <= n - m; ++i) {
+        if (patHash == txtHash) {
+            // possible match, verify to avoid false positive
+            if (text.compare(i, m, pat) == 0) res.push_back(i);
+        }
+        if (i < n - m) {
+            // remove leading char and add next char
+            txtHash = (txtHash - (unsigned char)text[i] * powBase) % mod;
+            if (txtHash < 0) txtHash += mod;
+            txtHash = (txtHash * base + (unsigned char)text[i + m]) % mod;
+        }
+    }
+    return res;
+}
+
+/* ===========================
+   3) Generic Hash Table (separate chaining)
+   =========================== */
+template<typename K, typename V>
+class HashTable {
+private:
+    vector<list<pair<K,V>>> table;
+    size_t capacity;
+    size_t sz;
+
+    size_t indexFor(const K &key) const {
+        return std::hash<K>{}(key) % capacity;
+    }
+
+public:
+    HashTable(size_t cap = 101) : capacity(cap), table(cap), sz(0) {}
+
+    void insert(const K &key, const V &value) {
+        size_t idx = indexFor(key);
+        for (auto &p : table[idx]) {
+            if (p.first == key) { p.second = value; return; }
+        }
+        table[idx].emplace_back(key, value);
+        ++sz;
+    }
+
+    bool erase(const K &key) {
+        size_t idx = indexFor(key);
+        auto &lst = table[idx];
+        for (auto it = lst.begin(); it != lst.end(); ++it) {
+            if (it->first == key) {
+                lst.erase(it);
+                --sz;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool find(const K &key, V &out) const {
+        size_t idx = indexFor(key);
+        for (auto &p : table[idx]) {
+            if (p.first == key) { out = p.second; return true; }
+        }
+        return false;
+    }
+
+    size_t size() const { return sz; }
+
+    // debug print
+    void debug_print() const {
+        for (size_t i = 0; i < capacity; ++i) {
+            if (!table[i].empty()) {
+                cout << "[" << i << "]: ";
+                for (auto &p : table[i]) cout << "{" << p.first << ":" << p.second << "} ";
+                cout << "\n";
+            }
+        }
+    }
+};
+
+/* ===========================
+   4) Queues
+   - Circular array queue (simple fixed capacity)
+   - Example using std::queue
+   =========================== */
+template<typename T>
+class CircularQueue {
+private:
+    vector<T> data;
+    int head, tail, cap;
+    int count;
+
+public:
+    CircularQueue(int capacity = 100) : data(capacity), head(0), tail(0), cap(capacity), count(0) {}
+
+    bool enqueue(const T &x) {
+        if (count == cap) return false; // full
+        data[tail] = x;
+        tail = (tail + 1) % cap;
+        ++count;
+        return true;
+    }
+
+    bool dequeue(T &out) {
+        if (count == 0) return false; // empty
+        out = data[head];
+        head = (head + 1) % cap;
+        --count;
+        return true;
+    }
+
+    bool empty() const { return count == 0; }
+    bool full() const { return count == cap; }
+    int size() const { return count; }
+};
+
+/* ===========================
+   main() - examples/tests
+   =========================== */
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+
+    cout << "=== KMP example ===\n";
+    string text = "ababcabcabababd";
+    string pat  = "ababd";
+    auto kmpRes = kmpSearch(text, pat);
+    cout << "KMP found positions: ";
+    for (int p : kmpRes) cout << p << " ";
+    cout << "\n\n";
+
+    cout << "=== Rabin-Karp example ===\n";
+    string t2 = "GEEKS FOR GEEKS";
+    string p2 = "GEEK";
+    auto rkRes = rabinKarp(t2, p2);
+    cout << "Rabin-Karp found positions: ";
+    for (int p : rkRes) cout << p << " ";
+    cout << "\n\n";
+
+    cout << "=== HashTable example ===\n";
+    HashTable<string,int> ht(17);
+    ht.insert("apple", 3);
+    ht.insert("banana", 5);
+    ht.insert("orange", 7);
+    ht.insert("banana", 6); // update
+    ht.debug_print();
+    int val;
+    if (ht.find("banana", val)) cout << "banana -> " << val << "\n";
+    ht.erase("apple");
+    cout << "after erase apple, size = " << ht.size() << "\n\n";
+
+    cout << "=== CircularQueue example ===\n";
+    CircularQueue<int> q(5);
+    for (int i = 1; i <= 5; ++i) {
+        bool ok = q.enqueue(i*10);
+        cout << "enqueue " << i*10 << " -> " << (ok ? "ok":"full") << "\n";
+    }
+    int out;
+    while (!q.empty()) {
+        q.dequeue(out);
+        cout << "dequeue " << out << "\n";
+    }
+
+    cout << "\n=== std::queue example ===\n";
+    queue<string> qs;
+    qs.push("first");
+    qs.push("second");
+    qs.push("third");
+    while (!qs.empty()) {
+        cout << "pop: " << qs.front() << "\n";
+        qs.pop();
+    }
+
+    return 0;
+}
